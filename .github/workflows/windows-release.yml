@@ -1,0 +1,107 @@
+name: Build and Release Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Enable Windows build
+        run: flutter config --enable-windows-desktop
+
+      - name: Build Windows Release
+        run: flutter build windows --release --no-tree-shake-icons
+
+      - name: Install Inno Setup (choco)
+        run: |
+          choco feature enable -n=allowGlobalConfirmation
+          choco install innosetup -y
+
+      - name: Build installer with Inno
+        run: |
+          "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" installer\\are_music.iss
+
+      - name: Prepare artifact path
+        run: |
+          mkdir -p release
+          copy /Y build\windows\x64\runner\Release\* release\
+          powershell -Command "Add-Type -AssemblyName 'System.IO.Compression.FileSystem'; [IO.Compression.ZipFile]::CreateFromDirectory('release','are_music_windows_release.zip')"
+
+      - name: Upload Release Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: are-music-windows-release
+          path: |
+            release
+            are_music_windows_release.zip
+
+  create-release:
+    needs: build-windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: are-music-windows-release
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload files to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish latest.json to gh-pages
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - name: Create latest.json and push to gh-pages
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG=${{ github.ref_name }}
+          REPO=${{ github.repository }}
+          OWNER=$(echo $REPO | cut -d'/' -f1)
+          NAME=$(echo $REPO | cut -d'/' -f2)
+          ASSET_URL="https://github.com/${REPO}/releases/download/${TAG}/are_music_windows_release.zip"
+          cat > latest.json <<EOF
+{
+  "version": "${TAG#v}",
+  "url": "${ASSET_URL}",
+  "sha256": "",
+  "notes": "Release ${TAG}"
+}
+EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages || true
+          git checkout -B gh-pages
+          mkdir -p .
+          mv latest.json latest.json
+          git add latest.json
+          git commit -m "Publish latest.json for ${TAG}" || true
+          git push origin gh-pages --force
