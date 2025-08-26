@@ -57,7 +57,7 @@ class _AllMusicScreenState extends State<AllMusicScreen> {
 
       // Fetch metadata first
       final tags = await AudioTags.read(path);
-      final fileName = path.split('/').last;
+  final fileName = p.basename(path);
 
       // Fetch metadata first with robust error handling
       String title = fileName;
@@ -109,12 +109,12 @@ class _AllMusicScreenState extends State<AllMusicScreen> {
       }
 
       String? artFilePath;
-      if (albumArt != null) {
+    if (albumArt != null) {
         // Save album art to a safe system temp file and use its file path
         try {
           final tempDir = Directory.systemTemp;
-          final artFile =
-              File(p.join(tempDir.path, 'albumart_${fileName.hashCode}.png'));
+      final artFile = File(p.join(
+        tempDir.path, 'albumart_${p.basename(path).hashCode}.png'));
           await artFile.writeAsBytes(albumArt);
           artFilePath = artFile.path;
         } catch (e) {
@@ -179,8 +179,9 @@ class _AllMusicScreenState extends State<AllMusicScreen> {
                           Widget leadingWidget;
                           if (albumArt != null) {
                             final tempDir = Directory.systemTemp;
-                            final artFile = File(
-                                '${tempDir.path}/albumart_${file.path.hashCode}.png');
+                            final artFile = File(p.join(
+                                tempDir.path,
+                                'albumart_${p.basename(file.path).hashCode}.png'));
                             if (artFile.existsSync()) {
                               leadingWidget = ClipRRect(
                                 borderRadius: BorderRadius.circular(4),
@@ -207,7 +208,7 @@ class _AllMusicScreenState extends State<AllMusicScreen> {
                           }
                           return ListTile(
                             leading: leadingWidget,
-                            title: Text(file.path.split('/').last),
+                            title: Text(p.basename(file.path)),
                             onTap: () {
                               _playFile(file.path);
                             },

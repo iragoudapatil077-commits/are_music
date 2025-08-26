@@ -46,18 +46,20 @@ class MusicLibraryProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Clear existing records if this is a full rescan
-      await _db.clearMusicFiles();
-
       // Scan for music files
       final List<File> newFiles = await scanFunc();
 
-      // Add all files to database
-      for (var file in newFiles) {
-        await _db.insertMusicFile(file);
+      if (newFiles.isNotEmpty) {
+        // Replace DB records only when scan finds files (safer on error)
+        await _db.clearMusicFiles();
+        for (var file in newFiles) {
+          await _db.insertMusicFile(file);
+        }
+        _allMusicFiles = newFiles;
+      } else {
+        // If scan returned empty, keep existing saved files
+        await loadSavedFiles();
       }
-
-      _allMusicFiles = newFiles;
     } catch (e) {
       print('Error scanning music files: $e');
       _allMusicFiles = [];

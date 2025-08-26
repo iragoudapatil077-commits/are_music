@@ -18,6 +18,9 @@ class DatabaseHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
 
+    // Debug: print DB path used at runtime
+    // ignore: avoid_print
+    print('DatabaseHelper: opening DB at $path');
     return await openDatabase(
       path,
       version: 1,

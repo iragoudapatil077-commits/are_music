@@ -12,6 +12,7 @@ import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 import 'file_storage.dart';
 import 'settings_manager.dart';
 import 'stream_client.dart';
+import 'database_helper.dart';
 
 Box _box = Hive.box('DOWNLOADS');
 YoutubeExplode ytExplode = YoutubeExplode();
@@ -133,7 +134,7 @@ class DownloadManager {
           try {
             await sink?.close();
             final actual = await tmpFile.length();
-            if (actual == total) {
+              if (actual == total) {
               // read bytes and use existing saveMusic to write tags etc.
               final bytes = await tmpFile.readAsBytes();
               File? file = await GetIt.I<FileStorage>().saveMusic(bytes, song);
@@ -148,6 +149,12 @@ class DownloadManager {
                     'path': file.path,
                     'timestamp': DateTime.now().millisecondsSinceEpoch
                   });
+                  // Also ensure DB has record (redundant but safe)
+                  try {
+                    await DatabaseHelper.instance.insertMusicFile(file);
+                  } catch (e) {
+                    // ignore DB errors
+                  }
                 } catch (e) {
                   print('DownloadManager: hive put after save failed: $e');
                 }

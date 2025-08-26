@@ -16,6 +16,7 @@ import '../utils/enhanced_image.dart';
 import '../ytmusic/ytmusic.dart';
 import 'library.dart';
 import 'settings_manager.dart';
+import 'database_helper.dart';
 
 class FileStorage {
   static bool _initialised = false;
@@ -99,7 +100,10 @@ class FileStorage {
     String fileName = song['title'];
     final RegExp avoid = RegExp(r'[\.\\\*\:\(\)\"\?#/;\|]');
     fileName = fileName.replaceAll(avoid, '').replaceAll("'", '');
-    //fileName = Uri.decodeFull(fileName);
+    // Ensure filename is not empty
+    if (fileName.trim().isEmpty) {
+      fileName = song['videoId'] ?? 'track_${DateTime.now().millisecondsSinceEpoch}';
+    }
     if (!(await requestPermissions())) return null;
     Directory directory = await _getDirectory(storagePaths.musicPath);
 
@@ -109,34 +113,44 @@ class FileStorage {
       file = File((path.join(directory.path, '$fileName($number).$extension')));
       number++;
     }
-    try {
-      if (await file.exists()) {
-        await file.delete();
-      }
-      await file.writeAsBytes(data, flush: true);
-
       try {
-        Response res = await get(
-            Uri.parse(getEnhancedImage(song['thumbnails'].first['url'])));
-        Tag tag = Tag(
-            title: song['title'],
-            trackArtist:
-                song['artists']?.map((artist) => artist['name']).join(','),
-            album: song['album']?['name'],
-            pictures: [
-              Picture(
-                bytes: res.bodyBytes,
-                pictureType: PictureType.coverFront,
-              )
-            ]);
-        await AudioTags.write(file.path, tag);
-      } catch (e) {
+        if (await file.exists()) {
+          await file.delete();
+        }
         await file.writeAsBytes(data, flush: true);
+
+        try {
+          Response res = await get(
+              Uri.parse(getEnhancedImage(song['thumbnails'].first['url'])));
+          Tag tag = Tag(
+              title: song['title'],
+              trackArtist:
+                  song['artists']?.map((artist) => artist['name']).join(','),
+              album: song['album']?['name'],
+              pictures: [
+                Picture(
+                  bytes: res.bodyBytes,
+                  pictureType: PictureType.coverFront,
+                )
+              ]);
+          await AudioTags.write(file.path, tag);
+        } catch (e) {
+          // ignore tag write errors - file is already saved
+        }
+
+        // Try to insert into local music DB so UI can pick it up on refresh
+        try {
+          await DatabaseHelper.instance.insertMusicFile(file);
+        } catch (e) {
+          // insertion may fail on some environments; ignore but log
+          // ignore: avoid_print
+          print('FileStorage: failed to insert music file to DB: $e');
+        }
+
+        return file;
+      } catch (e) {
+        return null;
       }
-      return file;
-    } catch (e) {
-      return null;
-    }
   }
 
   Future<void> loadBackup(BuildContext context) async {
